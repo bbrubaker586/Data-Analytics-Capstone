@@ -1,0 +1,675 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+#install packages
+```{r}
+install.packages('readr')
+install.packages('dplyr')
+install.packages('ggplot2')
+install.packages('scales')
+install.packages('lubridate')
+install.packages('zoo')
+install.packages('ggrepel')
+```
+
+#load libraries
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(lubridate)
+library(zoo)
+library(ggrepel)
+```
+
+
+
+#load data
+```{r}
+sourcing_data <- read_csv("Procurement_Cleaned_Data.csv")
+```
+#view data
+```{r}
+head(sourcing_data)
+```
+
+#structure of the data
+```{r}
+str(sourcing_data)
+```
+#change the dates to date datatype
+```{r}
+sourcing_data$Delivery_Date <- as.Date(sourcing_data$Delivery_Date, format = "%m/%d/%Y")
+sourcing_data$Order_Date <- as.Date(sourcing_data$Order_Date, format = "%m/%d/%y")
+```
+
+#verify the datatype change
+```{r}
+str(sourcing_data$Delivery_Date)
+summary(sourcing_data$Delivery_Date)
+
+str(sourcing_data$Order_Date)
+summary(sourcing_data$Order_Date)
+```
+
+#column names
+```{r}
+names(sourcing_data)
+```
+
+#summarize $ amount purchased by supplier by year
+
+```{r}
+summary_data <- sourcing_data %>%
+  group_by(Supplier, Delivery_Year) %>%
+  summarise(Total_Purchase_Amount = sum(Total_Purchase_Amount, na.rm = TRUE)) %>%
+  ungroup()
+```
+#identify desc order of suppliers based on 2023 spend
+```{r}
+top_2023_suppliers <- summary_data %>%
+  filter(Delivery_Year == 2023) %>%
+  arrange(desc(Total_Purchase_Amount)) %>%
+  pull(Supplier)
+```
+
+
+#reorder supplier factor levels
+```{r}
+summary_data <- summary_data %>%
+  mutate(Supplier = factor(Supplier, levels = top_2023_suppliers))
+```
+
+
+#plot the graph
+```{r}
+ggplot(summary_data, aes(x = Supplier, y = Total_Purchase_Amount, fill = as.factor(Delivery_Year))) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  scale_y_continuous(labels = label_dollar(scale_cut = cut_short_scale())) +
+  labs(title = "Total Purchase Amount by Supplier and Year", 
+       x = "Supplier",
+       y = "Total Purchase Amount", 
+       fill = "Delivery Year") + 
+  theme_minimal()
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+#summarize $ amount purchased by category by year
+
+```{r}
+summary_category_data <- sourcing_data %>%
+  group_by(Item_Category, Delivery_Year) %>%
+  summarise(Total_Purchase_Amount = sum(Total_Purchase_Amount, na.rm = TRUE)) %>%
+  ungroup()
+```
+#identify desc order of category based on 2023 spend
+```{r}
+top_2023_categories <- summary_category_data %>%
+  filter(Delivery_Year == 2023) %>%
+  arrange(desc(Total_Purchase_Amount)) %>%
+  pull(Item_Category)
+```
+#reorder supplier factor levels
+```{r}
+summary_category_data <- summary_category_data %>%
+  mutate(Item_Category = factor(Item_Category, levels = top_2023_categories))
+```
+
+
+
+
+#plot the graph
+```{r}
+ggplot(summary_category_data, aes(x = Item_Category, y = Total_Purchase_Amount, fill = as.factor(Delivery_Year))) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  scale_y_continuous(labels = label_dollar(scale_cut = cut_short_scale())) +
+  labs(title = "Total Purchase Amount by Category and Year", 
+       x = "Category",
+       y = "Total Purchase Amount", 
+       fill = "Delivery Year") + 
+  theme_minimal()
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+#summarize $ amount saved by supplier by year
+```{r}
+summary_savings_data <- sourcing_data %>%
+  group_by(Supplier, Delivery_Year) %>%
+  summarise(Negotiated_Savings = sum(Negotiated_Savings, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+#identify desc order of savings by supplier based on 2023 spend
+```{r}
+top_2023_savings <- summary_savings_data %>%
+  filter(Delivery_Year == 2023) %>%
+  arrange(desc(Negotiated_Savings)) %>%
+  pull(Supplier)
+```
+
+#reorder supplier factor levels
+```{r}
+summary_savings_data <- summary_savings_data %>%
+  mutate(Supplier = factor(Supplier, levels = top_2023_savings))
+```
+
+#plot the graph
+```{r}
+ggplot(summary_savings_data, aes(x = Supplier, y = Negotiated_Savings, fill = as.factor(Delivery_Year))) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  scale_y_continuous(labels = label_dollar(scale_cut = cut_short_scale())) +
+  labs(title = "Total Negotiated Savings Amount by Supplier and Year", 
+       x = "Supplier",
+       y = "Negotiated Savings", 
+       fill = "Delivery Year") + 
+  theme_minimal()
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+#monthly summary comparison
+```{r}
+monthly_summary <- sourcing_data %>%
+  group_by(Delivery_Year, Delivery_Month) %>%
+  summarise(Total_Spend = sum(Total_Purchase_Amount, na.rm = TRUE), Orders = n()) %>%
+  arrange(Delivery_Year, Delivery_Month)
+```
+
+
+
+
+
+#bar chart monthly spend
+```{r}
+# Prepare data
+monthly_summary <- sourcing_data %>%
+  mutate(Delivery_MonthDate = floor_date(Delivery_Date, unit = "month")) %>%
+  group_by(Delivery_MonthDate) %>%
+  summarise(
+    Total_Spend = sum(Total_Purchase_Amount, na.rm = TRUE),
+    Orders = n()
+  ) %>%
+  arrange(Delivery_MonthDate) %>%
+  ungroup() %>%
+  # Create labels for x-axis:
+  mutate(
+    MonthLabel = ifelse(
+      month(Delivery_MonthDate) == 1,
+      paste0("Jan ", year(Delivery_MonthDate)),
+      format(Delivery_MonthDate, "%b")  # This gives "Feb", "Mar", etc.
+    )
+  )
+
+# Plot with explicit breaks and labels:
+ggplot(monthly_summary, aes(x = Delivery_MonthDate, y = Total_Spend)) +
+  geom_col(fill = "steelblue") +
+  scale_y_continuous(labels = label_dollar(scale = 1e-6, suffix = "M", prefix = "$")) +
+  scale_x_date(
+    breaks = monthly_summary$Delivery_MonthDate,  # exact breaks
+    labels = monthly_summary$MonthLabel,          # exact labels
+    expand = c(0, 0)
+  ) +
+  labs(title = "Monthly Spend Totals",
+       x = NULL,
+       y = "Total Spend") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+#line graph for monthly data to compare 2022 to 2023
+```{r}
+# Prepare data: get year, month number, and total spend per month-year
+monthly_summary <- sourcing_data %>%
+  mutate(
+    Delivery_Year = year(Delivery_Date),
+    Delivery_Month = month(Delivery_Date)
+  ) %>%
+  group_by(Delivery_Year, Delivery_Month) %>%
+  summarise(
+    Total_Spend = sum(Total_Purchase_Amount, na.rm = TRUE),
+    Orders = n()
+  ) %>%
+  ungroup()
+
+# Create factor for month to ensure Jan-Dec order
+monthly_summary <- monthly_summary %>%
+  mutate(
+    Month_Factor = factor(
+      month.abb[Delivery_Month], levels = month.abb
+    )
+  )
+
+# Plot line chart
+ggplot(monthly_summary, aes(x = Month_Factor, y = Total_Spend, group = factor(Delivery_Year), color = factor(Delivery_Year))) +
+  geom_line(linewidth = 1.2) +      # changed size to linewidth here
+  geom_point(size = 2) +             # size is still used for points
+  scale_y_continuous(labels = label_dollar(scale = 1e-6, suffix = "M", prefix = "$")) +
+  labs(
+    title = "Monthly Spend by Year",
+    x = "Month",
+    y = "Total Spend",
+    color = "Year"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    legend.position = "top"
+  )
+```
+#rolling 3 month average chart
+```{r}
+# Step 1: Create a date column for grouping by month
+monthly_summary <- sourcing_data %>%
+  mutate(Delivery_MonthDate = floor_date(as.Date(Delivery_Date), "month")) %>%
+  group_by(Delivery_MonthDate) %>%
+  summarise(
+    Total_Spend = sum(Total_Purchase_Amount, na.rm = TRUE),
+    Orders = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(Delivery_MonthDate)
+
+# Step 2: Rolling average over full timeline
+monthly_summary <- monthly_summary %>%
+  mutate(Rolling_Spend = rollmean(Total_Spend, k = 3, fill = NA, align = "right")) %>%
+  mutate(
+    Delivery_Year = year(Delivery_MonthDate),
+    Delivery_Month = month(Delivery_MonthDate),
+    Month_Factor = factor(month.abb[Delivery_Month], levels = month.abb)
+  )
+
+# Step 3: Plot rolling average
+ggplot(monthly_summary, aes(x = Month_Factor, y = Rolling_Spend, group = factor(Delivery_Year), color = factor(Delivery_Year))) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  scale_y_continuous(labels = label_dollar(scale = 1e-6, suffix = "M", prefix = "$")) +
+  labs(
+    title = "Rolling 3-Month Average Spend by Year",
+    x = "Month",
+    y = "Rolling 3-Month Avg Spend",
+    color = "Year"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    legend.position = "top"
+  )
+```
+#overlaying the 3 month trend and actual
+```{r}
+# Step 1: Summarize monthly spend and compute rolling average
+monthly_summary <- sourcing_data %>%
+  mutate(Delivery_MonthDate = floor_date(as.Date(Delivery_Date), "month")) %>%
+  group_by(Delivery_MonthDate) %>%
+  summarise(
+    Total_Spend = sum(Total_Purchase_Amount, na.rm = TRUE),
+    Orders = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(Delivery_MonthDate) %>%
+  mutate(
+    Rolling_Spend = rollmean(Total_Spend, k = 3, fill = NA, align = "right"),
+    Delivery_Year = year(Delivery_MonthDate),
+    Delivery_Month = month(Delivery_MonthDate),
+    Month_Factor = factor(month.abb[Delivery_Month], levels = month.abb)
+  )
+
+# Step 2: Plot both actual spend and rolling average
+ggplot(monthly_summary, aes(x = Month_Factor)) +
+  # Bars for monthly spend
+  geom_col(aes(y = Total_Spend, fill = factor(Delivery_Year)), position = position_dodge(width = 0.8), width = 0.7, alpha = 0.6) +
+  # Line for rolling 3-month average
+  geom_line(aes(y = Rolling_Spend, group = factor(Delivery_Year), color = factor(Delivery_Year)), linewidth = 1.2) +
+  geom_point(aes(y = Rolling_Spend, color = factor(Delivery_Year)), size = 2) +
+  scale_y_continuous(labels = label_dollar(scale = 1e-6, suffix = "M", prefix = "$")) +
+  labs(
+    title = "Monthly Spend with Rolling 3-Month Average",
+    x = "Month",
+    y = "Spend",
+    fill = "Year",
+    color = "Rolling Avg Year"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    legend.position = "top"
+  )
+```
+
+
+
+#percent savings by supplier, not dollar value savings next
+#summarize both savings and spend by supplier and year
+```{r}
+summary_savings_data <- sourcing_data %>%
+  group_by(Supplier, Delivery_Year) %>%
+  summarise(
+    Total_Spend = sum(Total_Purchase_Amount, na.rm = TRUE),
+    Negotiated_Savings = sum(Negotiated_Savings, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(Savings_Percent = Negotiated_Savings / Total_Spend)
+```
+
+#order suppliers by 2023 savings percentage
+```{r}
+top_2023_savings <- summary_savings_data %>%
+  filter(Delivery_Year == 2023) %>%
+  arrange(desc(Savings_Percent)) %>%
+  pull(Supplier)
+
+summary_savings_data <- summary_savings_data %>%
+  mutate(Supplier = factor(Supplier, levels = top_2023_savings))
+```
+
+#plot percentage savings by supplier
+```{r}
+library(ggplot2)
+library(scales)
+
+ggplot(summary_savings_data, aes(x = Supplier, y = Savings_Percent, fill = as.factor(Delivery_Year))) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    title = "Negotiated Savings by Supplier and Year", 
+    x = "Supplier",
+    y = "Percent Saved", 
+    fill = "Delivery Year"
+  ) + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+#defect 2nd attempt - defect value based on compliant orders
+```{r}
+# Summarize compliance vs. defects
+compliance_summary <- sourcing_data %>%
+  group_by(Delivery_Year, Compliance) %>%
+  summarise(
+    Total_Spend = sum(Total_Purchase_Amount, na.rm = TRUE),
+    Total_Defects = sum(Defect_Value, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(Defect_Rate = Total_Defects / Total_Spend)
+
+# Plot
+ggplot(compliance_summary, aes(x = factor(Delivery_Year), y = Defect_Rate, fill = Compliance)) +
+  geom_col(position = "dodge") +
+  geom_text(aes(label = percent(Defect_Rate, accuracy = 0.1)),
+            position = position_dodge(width = 0.9),
+            vjust = -0.3, size = 3) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.1), expand = expansion(mult = c(0, 0.1))) +
+  scale_fill_manual(values = c("Yes" = "#00C400", "No" = "#D00000")) +
+  labs(
+    title = "Defect Rate by Year and Compliance Status",
+    x = "Year",
+    y = "Defect Rate (% of Spend)",
+    fill = "Compliance"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(face = "bold"),
+    legend.position = "top"
+  )
+```
+#Defect Rate Per Supplier
+```{r}
+defect_summary <- sourcing_data %>%
+  group_by(Supplier, Delivery_Year) %>%
+  summarise(Total_Defects = sum(Defect_Value, na.rm = TRUE)) %>%
+  ungroup()
+
+top_2023_defects <- defect_summary %>%
+  filter(Delivery_Year == 2023) %>%
+  arrange(desc(Total_Defects)) %>%
+  pull(Supplier)
+
+defect_summary <- defect_summary %>%
+  mutate(Supplier = factor(Supplier, levels = top_2023_defects))
+
+ggplot(defect_summary, aes(x = Supplier, y = Total_Defects, fill = as.factor(Delivery_Year))) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = label_dollar(scale_cut = cut_short_scale())) +
+  labs(
+    title = "Total Defect Value by Supplier and Year",
+    x = "Supplier",
+    y = "Defect Value ($)",
+    fill = "Year"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+```
+#defect rate by supplier, with percent of spend
+```{r}
+defect_summary <- sourcing_data %>%
+  group_by(Supplier, Delivery_Year) %>%
+  summarise(
+    Total_Defects = sum(Defect_Value, na.rm = TRUE),
+    Total_Spend = sum(Total_Purchase_Amount, na.rm = TRUE)
+  ) %>%
+  mutate(Defect_Rate = Total_Defects / Total_Spend * 100) %>%
+  ungroup()
+
+top_2023_defects <- defect_summary %>%
+  filter(Delivery_Year == 2023) %>%
+  arrange(desc(Defect_Rate)) %>%
+  pull(Supplier)
+
+defect_summary <- defect_summary %>%
+  mutate(Supplier = factor(Supplier, levels = top_2023_defects))
+
+ggplot(defect_summary, aes(x = Supplier, y = Defect_Rate, fill = as.factor(Delivery_Year))) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  labs(
+    title = "Defect Rate by Supplier and Year",
+    x = "Supplier",
+    y = "Defect Rate (%)",
+    fill = "Year"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+#defect rate with percentage of spend and totals
+```{r}
+scale_factor <- max(defect_summary$Total_Defects) / max(defect_summary$Defect_Rate)
+
+ggplot(defect_summary, aes(x = Supplier, y = Total_Defects)) +
+  geom_col(aes(fill = as.factor(Delivery_Year)), position = position_dodge(width = 0.8), width = 0.6) +
+  
+  geom_line(
+    aes(y = Defect_Rate * scale_factor, group = as.factor(Delivery_Year), color = as.factor(Delivery_Year)),
+    position = position_dodge(width = 0.8),
+    size = 1
+  ) +
+  
+  scale_y_continuous(
+    name = "Total Defect Value ($)",
+    labels = scales::label_dollar(scale_cut = scales::cut_short_scale()),
+    sec.axis = sec_axis(
+      ~ . / scale_factor,
+      name = "Defect Rate (%)",
+      labels = scales::percent_format(scale = 1)
+    )
+  ) +
+  
+  labs(
+    title = "Defect Value and Defect Rate by Supplier and Year",
+    x = "Supplier",
+    fill = "Year (Bars)",
+    color = "Year (Line)"
+  ) +
+  
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+```
+#defect Rate by category by year
+```{r}
+# Summarize by Category and Year
+defect_summary <- sourcing_data %>%
+  group_by(Item_Category, Delivery_Year) %>%
+  summarise(
+    Total_Defects = sum(Defect_Value, na.rm = TRUE),
+    Total_Spend = sum(Total_Purchase_Amount, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(Defect_Rate = Total_Defects / Total_Spend * 100)
+
+# Get order based on most recent year's defect rate (e.g., 2023)
+category_order <- defect_summary %>%
+  filter(Delivery_Year == 2023) %>%
+  arrange(desc(Defect_Rate)) %>%
+  pull(Item_Category)
+
+# Apply factor order to control bar sort
+defect_summary <- defect_summary %>%
+  mutate(Item_Category = factor(Item_Category, levels = category_order))
+
+# Compute scale factor to align percent with dollar values
+scale_factor <- max(defect_summary$Total_Defects) / max(defect_summary$Defect_Rate)
+
+# Add scaled y-position for line and labels
+defect_summary <- defect_summary %>%
+  mutate(
+    scaled_rate_y = Defect_Rate * scale_factor,
+    label_y = scaled_rate_y + max(Total_Defects) * 0.05  # small space above the line
+  )
+
+# Plot
+ggplot(defect_summary, aes(x = Item_Category, y = Total_Defects)) +
+  geom_col(aes(fill = as.factor(Delivery_Year)),
+           position = position_dodge(width = 0.8),
+           width = 0.6) +
+
+  geom_line(
+    aes(y = scaled_rate_y, group = as.factor(Delivery_Year), color = as.factor(Delivery_Year)),
+    position = position_dodge(width = 0.8),
+    linewidth = 1
+  ) +
+
+  # Add percentage labels
+#  geom_text(
+#    aes(y = label_y, label = paste0(round(Defect_Rate, 1), "%"), group = as.factor(Delivery_Year), color = #as.factor(Delivery_Year)),
+#    position = position_dodge(width = 0.8),
+#    size = 3,
+#    vjust = 0
+#  ) +
+
+  scale_y_continuous(
+    name = "Total Defect Value ($)",
+    labels = scales::label_dollar(scale_cut = scales::cut_short_scale()),
+    sec.axis = sec_axis(
+      ~ . / scale_factor,
+      name = "Defect Rate (%)",
+      labels = scales::percent_format(scale = 1)
+    )
+  ) +
+
+  labs(
+    title = "Defect Value and Defect Rate by Item Category and Year",
+    x = "Item Category",
+    fill = "Year (Bars)",
+    color = "Year (Line)"
+  ) +
+
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+```
+#compliance status by supplier by year
+```{r}
+# Summarize total spend by Supplier, Year, and Compliance
+compliance_summary <- sourcing_data %>%
+  group_by(Supplier, Delivery_Year, Compliance) %>%
+  summarise(Total_Spend = sum(Total_Purchase_Amount, na.rm = TRUE), .groups = "drop")
+
+# Calculate percent of spend that is compliant per supplier and year
+compliance_summary <- compliance_summary %>%
+  group_by(Supplier, Delivery_Year) %>%
+  mutate(Spend_Share = Total_Spend / sum(Total_Spend)) %>%
+  ungroup()
+
+# Order suppliers by non-compliant spend share in most recent year (e.g., 2023)
+supplier_order <- compliance_summary %>%
+  filter(Delivery_Year == 2023, Compliance == "No") %>%
+  arrange(desc(Spend_Share)) %>%
+  pull(Supplier)
+
+# Apply factor order
+compliance_summary <- compliance_summary %>%
+  mutate(Supplier = factor(Supplier, levels = unique(supplier_order)))
+
+# Plot
+ggplot(compliance_summary, aes(x = Supplier, y = Spend_Share, fill = Compliance)) +
+  geom_col(position = "stack", width = 0.7) +
+  facet_wrap(~Delivery_Year, nrow = 1) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 1),
+    name = "Share of Total Spend"
+  ) +
+  scale_fill_manual(
+    values = c("No" = "#d73027", "Yes" = "#1a9850"),
+    name = "Compliance"
+  ) +
+  labs(
+    title = "Compliance Status by Supplier and Year",
+    x = "Supplier"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+```
+#compliance status by supplier by year
+```{r}
+# Summarize total spend by Item_Category, Year, and Compliance
+compliance_summary <- sourcing_data %>%
+  group_by(Item_Category, Delivery_Year, Compliance) %>%
+  summarise(Total_Spend = sum(Total_Purchase_Amount, na.rm = TRUE), .groups = "drop")
+
+# Calculate percent of spend that is compliant per supplier and year
+compliance_summary <- compliance_summary %>%
+  group_by(Item_Category, Delivery_Year) %>%
+  mutate(Spend_Share = Total_Spend / sum(Total_Spend)) %>%
+  ungroup()
+
+# Order suppliers by non-compliant spend share in most recent year (e.g., 2023)
+supplier_order <- compliance_summary %>%
+  filter(Delivery_Year == 2023, Compliance == "No") %>%
+  arrange(desc(Spend_Share)) %>%
+  pull(Item_Category)
+
+# Apply factor order
+compliance_summary <- compliance_summary %>%
+  mutate(Item_Category = factor(Item_Category, levels = unique(supplier_order)))
+
+# Plot
+ggplot(compliance_summary, aes(x = Item_Category, y = Spend_Share, fill = Compliance)) +
+  geom_col(position = "stack", width = 0.7) +
+  facet_wrap(~Delivery_Year, nrow = 1) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 1),
+    name = "Share of Total Spend"
+  ) +
+  scale_fill_manual(
+    values = c("No" = "#d73027", "Yes" = "#1a9850"),
+    name = "Compliance"
+  ) +
+  labs(
+    title = "Compliance Status by Category and Year",
+    x = "Category"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+```
+
